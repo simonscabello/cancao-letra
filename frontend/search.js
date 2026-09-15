@@ -1,7 +1,6 @@
 "use strict";
 
-var apiUrl = "https://api.lyrics.ovh";
-// var apiUrl = "http://localhost:8060";
+var apiUrl = "http://localhost:8080";
 
 var searchInput = document.getElementById("search-input");
 var resultsList = document.getElementById("results");

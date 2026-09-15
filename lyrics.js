@@ -201,19 +201,19 @@ function fromGenius(title, artistName) {
       }
       return bestHit.result.url;
     })
-    .then((url) => fetchHtml(url))
-    .then(($) => {
-      const containers = $('[data-lyrics-container="true"]');
-      if (containers.length === 0) throw new Error("No lyrics container");
-      // Process each container: replace <br> with newlines, strip tags
-      let lyrics = "";
-      containers.each((_, el) => {
-        const $el = $(el);
-        $el.find("br").replaceWith("\n");
-        lyrics += $el.text() + "\n";
-      });
-      return cleanLyrics(lyrics.trim());
-    });
+    .then((url) =>
+      fetchHtml(url).then(($) => {
+        const containers = $('[data-lyrics-container="true"]');
+        if (containers.length === 0) throw new Error("No lyrics container");
+        let lyrics = "";
+        containers.each((_, el) => {
+          const $el = $(el);
+          $el.find("br").replaceWith("\n");
+          lyrics += $el.text() + "\n";
+        });
+        return { lyrics: cleanLyrics(lyrics.trim()), url };
+      }),
+    );
 }
 
 /**
@@ -223,9 +223,9 @@ function fromGenius(title, artistName) {
 function fromAZLyrics(title, artistName) {
   const artist = stripToAlphaNum(deburr(artistName)).replace(/^the/, "");
   const song = stripToAlphaNum(deburr(title));
-  return fetchHtml(
-    "https://www.azlyrics.com/lyrics/" + artist + "/" + song + ".html",
-  ).then(($) => {
+  const url =
+    "https://www.azlyrics.com/lyrics/" + artist + "/" + song + ".html";
+  return fetchHtml(url).then(($) => {
     // Lyrics are in an unnamed div after the .ringtone div
     const divs = $(".col-xs-12.col-lg-8.text-center div");
     let lyrics = "";
@@ -242,7 +242,7 @@ function fromAZLyrics(title, artistName) {
         return false; // break
       }
     });
-    return cleanLyrics(lyrics);
+    return { lyrics: cleanLyrics(lyrics), url };
   });
 }
 
@@ -252,21 +252,20 @@ function fromAZLyrics(title, artistName) {
 function fromLetras(title, artistName) {
   const artist = kebabCase(deburr(artistName.trim()));
   const song = kebabCase(deburr(title.trim()));
-  return fetchHtml("https://www.letras.mus.br/" + artist + "/" + song + "/", {
+  const url = "https://www.letras.mus.br/" + artist + "/" + song + "/";
+  return fetchHtml(url, {
     rejectRedirects: true,
-  }).then(
-    ($) => {
-      const el = $(".lyric-original p, .lyric-tra p");
-      if (el.length === 0) throw new Error("Not found");
-      let lyrics = "";
-      el.each((_, p) => {
-        const $p = $(p);
-        $p.find("br").replaceWith("\n");
-        lyrics += $p.text().trim() + "\n\n";
-      });
-      return cleanLyrics(lyrics.trim());
-    },
-  );
+  }).then(($) => {
+    const el = $(".lyric-original p, .lyric-tra p");
+    if (el.length === 0) throw new Error("Not found");
+    let lyrics = "";
+    el.each((_, p) => {
+      const $p = $(p);
+      $p.find("br").replaceWith("\n");
+      lyrics += $p.text().trim() + "\n\n";
+    });
+    return { lyrics: cleanLyrics(lyrics.trim()), url };
+  });
 }
 
 /**
@@ -305,13 +304,12 @@ function fromLyricsCom(title, artistName) {
       const url = bestLink.startsWith("http")
         ? bestLink
         : "https://www.lyrics.com" + bestLink;
-      return fetchHtml(url);
-    })
-    .then(($) => {
-      const el = $("#lyric-body-text");
-      if (el.length === 0) throw new Error("Not found");
-      el.find("br").replaceWith("\n");
-      return cleanLyrics(el.text().trim());
+      return fetchHtml(url).then(($) => {
+        const el = $("#lyric-body-text");
+        if (el.length === 0) throw new Error("Not found");
+        el.find("br").replaceWith("\n");
+        return { lyrics: cleanLyrics(el.text().trim()), url };
+      });
     });
 }
 
@@ -320,19 +318,17 @@ function fromLyricsCom(title, artistName) {
  */
 function fromParolesNet(title, artistName) {
   const lyricsUrl = (s) => kebabCase(deburr(s.trim().toLowerCase()));
-  return fetchHtml(
+  const url =
     "https://www.paroles.net/" +
-      lyricsUrl(artistName) +
-      "/paroles-" +
-      lyricsUrl(title),
-    { rejectRedirects: true },
-  ).then(($) => {
+    lyricsUrl(artistName) +
+    "/paroles-" +
+    lyricsUrl(title);
+  return fetchHtml(url, { rejectRedirects: true }).then(($) => {
     const el = $(".song-text");
     if (el.length === 0) throw new Error("Not found");
-    // Remove header and ad divs that are mixed into lyrics
     el.find("h2").remove();
     el.find("div[id], div[class]").remove();
-    return cleanLyrics(textln(el));
+    return { lyrics: cleanLyrics(textln(el)), url };
   });
 }
 
@@ -357,7 +353,7 @@ function fromLyricsMania(title, artistName) {
     urls.map((url) =>
       fetchHtml(url, { rejectRedirects: true }).then(($) => {
         if ($(".lyrics-body").length === 0) throw new Error("Not found");
-        return cleanLyrics(textln($(".lyrics-body")));
+        return { lyrics: cleanLyrics(textln($(".lyrics-body"))), url };
       }),
     ),
   );
@@ -370,7 +366,7 @@ function fromLyricsMania(title, artistName) {
  * Returns the first successful result.
  * @param {string} title
  * @param {string} artistName
- * @returns {Promise<string>}
+ * @returns {Promise<{lyrics: string, url: string}>}
  */
 function findLyrics(title, artistName) {
   const key = artistName.toLowerCase() + "\n" + title.toLowerCase();
@@ -400,10 +396,38 @@ function findLyrics(title, artistName) {
     promises.push(findLyrics(title, primaryArtist));
   }
 
-  return Promise.any(promises).then((lyrics) => {
-    cacheSet(key, lyrics);
-    return lyrics;
+  return Promise.any(promises).then((result) => {
+    cacheSet(key, result);
+    return result;
   });
 }
 
-module.exports = { findLyrics };
+const CIFRA_FETCH_TIMEOUT = 15000;
+
+/**
+ * Resolve a CifraClub URL only when the page actually contains chords.
+ * @param {string} title
+ * @param {string} artistName
+ * @returns {Promise<string|null>}
+ */
+async function findCifraUrl(title, artistName) {
+  const artist = kebabCase(deburr(artistName.trim()));
+  const song = kebabCase(deburr(title.trim()));
+  if (!artist || !song) return null;
+
+  const url = "https://www.cifraclub.com.br/" + artist + "/" + song + "/";
+  try {
+    const $ = await fetchHtml(url, {
+      rejectRedirects: true,
+      signal: AbortSignal.timeout(CIFRA_FETCH_TIMEOUT),
+    });
+    const cifra = $('[data-chord-content="true"]');
+    if (cifra.length === 0) return null;
+    if (cifra.find("b[data-chord-name]").length === 0) return null;
+    return url;
+  } catch {
+    return null;
+  }
+}
+
+module.exports = { findLyrics, findCifraUrl };

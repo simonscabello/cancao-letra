@@ -1,11 +1,9 @@
 const express = require("express");
-const { findLyrics } = require("./lyrics");
+const { findLyrics, findCifraUrl } = require("./lyrics");
 const cors = require("cors");
 
 const appApi = express();
-const appFrontend = express();
-const portApi = 8080;
-const portFrontend = 8081;
+const portApi = process.env.PORT || 8080;
 
 appApi.use(cors());
 
@@ -35,9 +33,9 @@ appApi.get("/v1/:artist/:title", function (req, res) {
   if (GARBAGE.has(artist.toLowerCase()) || GARBAGE.has(title.toLowerCase())) {
     return res.status(400).send({ error: "Invalid artist or title" });
   }
-  findLyrics(title, artist)
-    .then((l) => {
-      res.send({ lyrics: l });
+  Promise.all([findLyrics(title, artist), findCifraUrl(title, artist)])
+    .then(([result, cifraUrl]) => {
+      res.send({ lyrics: result.lyrics, url: result.url, cifraUrl });
     })
     .catch((e) => {
       res.status(404).send({ error: "No lyrics found" });
@@ -57,12 +55,6 @@ appApi.get("/suggest/:term", async function (req, res) {
   }
 });
 
-appFrontend.use(express.static("frontend"));
-
 appApi.listen(portApi, function () {
   console.log("API listening on port " + portApi);
-});
-
-appFrontend.listen(portFrontend, function () {
-  console.log("Frontend listening on port " + portFrontend);
 });

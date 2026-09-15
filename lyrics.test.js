@@ -1,9 +1,38 @@
 const { describe, it } = require("node:test");
 const assert = require("node:assert");
-const { findLyrics } = require("./lyrics");
+const { findLyrics, findCifraUrl } = require("./lyrics");
 
 // Generous timeout: external HTTP requests can be slow
 const TIMEOUT = 30000;
+
+describe("findLyrics — returns lyrics and source url", { timeout: TIMEOUT }, () => {
+  it("returns an https url for the page where lyrics were found", async () => {
+    const result = await findLyrics("Yellow", "Coldplay");
+    assert.equal(typeof result, "object");
+    assert.ok(typeof result.lyrics === "string", "lyrics should be a string");
+    assert.ok(result.lyrics.length > 50, `lyrics too short (${result.lyrics.length} chars)`);
+    assert.equal(typeof result.url, "string");
+    assert.match(result.url, /^https:\/\//);
+  });
+});
+
+describe("findCifraUrl — CifraClub", { timeout: TIMEOUT }, () => {
+  it("returns the cifraclub url when the page has chords", async () => {
+    const url = await findCifraUrl("Tempo Perdido", "Legião Urbana");
+    assert.equal(
+      url,
+      "https://www.cifraclub.com.br/legiao-urbana/tempo-perdido/",
+    );
+  });
+
+  it("returns null when cifraclub has no cifra for the song", async () => {
+    const url = await findCifraUrl(
+      "xxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "Tomeu Penya",
+    );
+    assert.equal(url, null);
+  });
+});
 
 // ── Songs that SHOULD return lyrics ─────────────────────────
 
@@ -58,9 +87,13 @@ const SHOULD_FIND = [
 describe("findLyrics — should find lyrics", { timeout: TIMEOUT }, () => {
   for (const [artist, title] of SHOULD_FIND) {
     it(`${artist} — ${title}`, async () => {
-      const lyrics = await findLyrics(title, artist);
-      assert.ok(typeof lyrics === "string", "lyrics should be a string");
-      assert.ok(lyrics.length > 50, `lyrics too short (${lyrics.length} chars)`);
+      const result = await findLyrics(title, artist);
+      assert.ok(typeof result.lyrics === "string", "lyrics should be a string");
+      assert.ok(
+        result.lyrics.length > 50,
+        `lyrics too short (${result.lyrics.length} chars)`,
+      );
+      assert.match(result.url, /^https:\/\//);
     });
   }
 });
